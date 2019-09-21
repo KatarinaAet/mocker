@@ -1,13 +1,7 @@
-
-# coding: utf-8
-
-# In[73]:
-
-
 import libtmux
 import socket
 import os
-import tqdm
+from tqdm import tqdm
 import argparse
 
 parser = argparse.ArgumentParser()
@@ -20,8 +14,7 @@ s = libtmux.Server()
 def start(num_users, base_dir='./'):
     #start N jupyter notebooks
     k = s.new_session(args.name_sess)
-    i = 1
-    while ( i <= num_users):
+    for i in tqdm(range(num_users)):
         portNum = 8000+i
         mypath = './'+str(i)
         if not os.path.isdir(mypath):
@@ -33,7 +26,6 @@ def start(num_users, base_dir='./'):
         token = 'a'*i
         command = 'jupyter notebook --ip {} --port {} --no-browser --NotebookApp.token={} --NotebookApp.notebook_dir={}'.format('127.0.0.1',str(portNum),str(token),mypath)
         pane.send_keys(command)
-        i = i+1
     pass
     
 
