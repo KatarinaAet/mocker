@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+#!/home/ekaterina/anaconda3/bin/python
+
 
 import shutil
 import random
@@ -12,7 +13,8 @@ import json
 from pprint import pprint
 import subprocess
 import traceback
-from pyroute2 import IPDB, NetNS, netns
+#from pyroute2.ipdb.main import IPDB
+from pyroute2 import IPDB, NetNS
 from cgroups import Cgroup
 from cgroups.user import create_user_cgroups
 from pychroot import Chroot
@@ -50,8 +52,8 @@ def create_parser():
 
     run_parser = subparsers.add_parser('run', help='создает контейнер из указанного image_id и запускает его с '
                                                    'указанной командой')
-    run_parser.add_argument('imageid', type=int, metavar='run-imageid', help='ID образа')
-    run_parser.add_argument('command', type=str, metavar='run-command', help='Команда')
+    run_parser.add_argument('imageid', type=str, metavar='run-imageid', help='ID образа')
+    #run_parser.add_argument('command', type=str, metavar='run-command', help='Команда')
     run_parser.set_defaults(func=parse_run)
 
     exec_parser = subparsers.add_parser('exec', help='запускает указанную команду внутри уже запущенного указанного '
@@ -97,7 +99,8 @@ def parse_ps(args):
 
 
 def parse_run(args):
-    print('Not implemented')
+	run(args.imageid)
+    #print('Not implemented')
 
 
 def parse_exec(args):
@@ -236,12 +239,121 @@ def pull(library, image):
             tar.extractall(str(contents_path))
     print('Pulled successfully')
 
+def run(image_name):
+    ip_last_octet = 103
+    images = get_images()
 
-path_to_images = '/home/aleksandr/Документы/mocker_images'
+    match = [i[3] for i in images if i[0] == image_name][0]
+
+    target_file = os.path.join('./mocker_images', match)
+    with open(target_file) as tf:
+        image_details = json.loads(tf.read())
+        # setup environment details
+        state = json.loads(image_details['history'][0]['v1Compatibility'])
+
+        # Extract information about this container
+        env_vars = state['config']['Env']
+        start_cmd = subprocess.list2cmdline(state['config']['Cmd'])
+        working_dir = state['config']['WorkingDir']
+
+        id = uuid.uuid1()
+
+        # unique-ish name
+        name = 'c_' + str(id.fields[5])[:4]
+
+        # unique-ish mac
+        mac = str(id.fields[5])[:2]
+
+        layer_dir = os.path.join('./mocker_images', match.replace('.json', ''), 'layers', 'contents')
+
+        with IPDB() as ipdb:
+            veth0_name = 'veth0_'+name
+            veth1_name = 'veth1_'+name
+            netns_name = 'netns_'+name
+            bridge_if_name = 'bridge0'
+
+            existing_interfaces = ipdb.interfaces.keys()
+
+            # Create a new virtual interface
+            with ipdb.create(kind='veth', ifname=veth0_name, peer=veth1_name) as i1:
+                i1.up()
+                if bridge_if_name not in existing_interfaces:
+                    ipdb.create(kind='bridge', ifname=bridge_if_name).commit()
+                    i1.set_target('master', bridge_if_name)
+
+            # Create a network namespace
+            NetNs.create(netns_name)
+
+            # move the bridge interface into the new namespace
+            with ipdb.interfaces[veth1_name] as veth1:
+                veth1.net_ns_fd = netns_name
+
+            # Use this network namespace as the database
+            ns = IPDB(nl=NetNS(netns_name))
+            with ns.interfaces.lo as lo:
+                lo.up()
+            with ns.interfaces[veth1_name] as veth1:
+                veth1.address = "02:42:ac:11:00:{0}".format(mac)
+                veth1.add_ip('10.0.0.{0}/24'.format(ip_last_octet))
+                veth1.up()
+                ns.routes.add({
+                'dst': 'default',
+                'gateway': '10.0.0.1'}).commit()
+
+            try:
+                # setup cgroup directory for this user
+                user = os.getlogin()
+                create_user_cgroups(user)
+
+                # First we create the cgroup and we set it's cpu and memory limits
+                cg = Cgroup(name)
+                cg.set_cpu_limit(50) 
+                cg.set_memory_limit(500)
+
+                # Then we a create a function to add a process in the cgroup
+                def in_cgroup():
+                    try:
+                        pid = os.getpid()
+                        cg = Cgroup(name)
+                        for env in env_vars:
+                            print('Setting ENV %s' % env)
+                            os.putenv(*env.split('=', 1))
+
+                        # Set network namespace
+                        netns.setns(netns_name)
+
+                        # add process to cgroup
+                        cg.add(pid)
+
+                        os.chroot(layer_dir)
+                        if working_dir != '':
+                            print("Setting working directory to %s" % working_dir)
+                            os.chdir(working_dir)
+                    except Exception as e:
+                        traceback.print_exc()
+                        print("Failed to preexecute function")
+                        print(e)
+                cmd = start_cmd
+                print('Running "%s"' % cmd)
+                process = subprocess.Popen(cmd, preexec_fn=in_cgroup, shell=True)
+                process.wait()
+                print(process.stdout)
+                print(process.stderr)
+            except Exception as e:
+                traceback.print_exc()
+                print(e)
+            finally:
+                print('Finalizing')
+                NetNS(netns_name).close()
+                netns.remove(netns_name)
+                ipdb.interfaces[veth0_name].remove()
+                print('done')
+
+
+path_to_images = '/home/ekaterina/documents/mocker_images'
 
 registry_base = 'https://registry-1.docker.io/v2'
 library = 'library'
-
 
 parser = create_parser()
 
