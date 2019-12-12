@@ -1,0 +1,13 @@
+INFO:root:Directory copied to ./mocker_images/image_88760
+INFO:root:Image id: 88760
+INFO:root:Directory copied to ./mocker_images/image_78912
+INFO:root:Image id: 78912
+INFO:root:Directory copied to ./mocker_images/image_55852
+INFO:root:Image id: image_55852
+INFO:root:image_image_55852. Error while deleting directory: [Errno 2] No such file or directory: './mocker_images/image_55852'
+INFO:root:image_55852. Error while deleting directory: [Errno 2] No such file or directory: './mocker_images/55852'
+INFO:root:Directory copied to ./mocker_images/image_29203
+INFO:root:Image id: image_29203
+INFO:root:image_29203. Error while deleting directory: [Errno 2] No such file or directory: './mocker_images/29203'
+INFO:root:Delete image_image_29203
+INFO:root:Image: library_ubuntu pulled successfully

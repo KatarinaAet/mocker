@@ -1,0 +1,9 @@
+requests
+docopt
+nsenter
+snakeoil
+terminaltables
+pychroot
+cgroups
+pyroute2
+argparse
